@@ -7,6 +7,8 @@ from urllib.parse import urlparse, urljoin, quote, quote_plus
 
 import re
 from loguru import logger
+from .utitls import DEAULT_MSG_FORMAT
+
 
 class MgekoWebs(Scraper):
   def __init__(self):
@@ -53,17 +55,18 @@ class MgekoWebs(Scraper):
     bs = BeautifulSoup(content, "html.parser") if content else None
     if bs:
       con = bs.find(class_="categories")
-      msg = f"<b>{results['title']}</b>\n\n"
-      msg += f"<b>Url:</b> {results['url']}\n\n"
-      
       if con:
         gen = ' '.join([con.text.strip() for con in con.find_all("a")])
-        msg += f"<b>Genres:</b> <code>{gen}</code>\n"
         
         des = bs.find("p", class_="description").text.strip() if bs.find("p", class_="description") else "N/A"
-        msg += f"<b>Description:</b> <code>{des}</code>"
-
-      results['msg'] = msg
+        
+        results['msg'] = DEAULT_MSG_FORMAT.format(
+          title=results['title'],
+          status="N/A",
+          genres=gen,
+          summary=des[:200],
+          url=results['url']
+        )
     
     chapters_url = f"{results['url']}all-chapters/"
     chapters = await self.get(chapters_url, headers=self.headers)
@@ -108,45 +111,3 @@ class MgekoWebs(Scraper):
     images_url = [quote(img.get('src'), safe=':/%') for img in images] if images else []
     
     return images_url
-
-
-  async def get_updates(self, page:int=1):
-    output = []
-    while page < 4:
-      url = f"https://www.mgeko.cc/jumbo/manga/?results={page}&filter=All"
-      try: content = await self.get(url, cs=True, headers=self.headers)
-      except: content = None
-      if content:
-        bs = BeautifulSoup(content, "html.parser")
-        lis = bs.find_all('li', class_='novel-item')
-        if lis:
-          for card in lis:
-            try:
-              rdata = card.find_next("a")
-              data = {}
-              data['url'] = urljoin(self.url, rdata['href'])
-              data['manga_title'] = rdata.find_next("h4").text.strip()
-              data['poster'] = card.find_next("img")['data-src']
-              
-              chapter_title = rdata.find_next("h5").text.strip()
-              chapter_search = re.search(r"chapter-([\d]+(?:\.[\d]+)?)\-([\w-]+)", chapter_title)
-              chapter_text = f"{chapter_search.group(1)}-{chapter_search.group(2)}" if chapter_search else chapter_title
-              chapter_url = f"{data['url']}all-chapters/"
-            
-              content = await self.get(chapter_url, headers=self.headers)
-              bs = BeautifulSoup(content, "html.parser")
-            
-              ul = bs.find('div', {'id': 'chpagedlist'})
-              lis = ul.find('li')
-            
-              chapter_url = urljoin(self.url, lis.find_next("a")['href'])
-              data['chapter_url'] = chapter_url
-              
-              data['title'] = chapter_text
-              output.append(data)
-            except:
-              continue
-              
-      page += 1 
-      
-    return output
