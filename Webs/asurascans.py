@@ -1,4 +1,3 @@
-
 from .scraper import Scraper
 import json
 
@@ -7,6 +6,8 @@ from urllib.parse import urlparse, urljoin, quote, quote_plus
 
 import re
 from loguru import logger
+from .utitls import DEAULT_MSG_FORMAT
+
 
 class AsuraScansWebs(Scraper):
   def __init__(self):
@@ -55,9 +56,14 @@ class AsuraScansWebs(Scraper):
       des = des.text.strip() if des else "N/A"
       
       gen = " ".join([g.text.strip() for g in bs.find_all("button", class_="text-white hover:text-themecolor text-sm cursor-pointer rounded-[3px] px-3 py-1 bg-[#343434]")])
-      results['msg'] = f"<b>{results['title']}</b>\n\n"
-      results['msg'] += f"<b>Geners: <blockquote expandable><code>{gen}</code><blockquote>\n\n"
-      results['msg'] += f"<b>Description</b>: <blockquote expandable><code>{des}</code><blockquote>\n"
+      
+      results['msg'] = DEAULT_MSG_FORMAT.format(
+        title=results['title'],
+        status=results.get('type', "N/A"),
+        genres=gen,
+        summary=des[:400],
+        url=results['url']
+      )
       
       container = bs.find(class_="pl-4 pr-2 pb-4 overflow-y-auto scrollbar-thumb-themecolor scrollbar-track-transparent scrollbar-thin mr-3 max-h-[20rem] space-y-2.5")
       results['chapters'] = container
@@ -110,34 +116,4 @@ class AsuraScansWebs(Scraper):
                image_links = [page['url'] for page in nested_pages if isinstance(page, dict)]
                return image_links
 
-  async def get_updates(self, page:int=1):
-    output = []
-    while page <= 3:
-      url = f"https://asuracomic.net/page/{page}"
-      results = await self.get(url, headers=self.headers)
-      
-      bs = BeautifulSoup(results, "html.parser")
-      container = bs.find(class_="text-white mb-1 md:mb-5 mt-5")
-      if container:
-        cards = container.find_all(class_="grid grid-rows-1 grid-cols-12 m-2")
-        #print(cards)
-        if cards:
-          for card in cards:
-            try:
-              data = {}
-              a = card.find("span", class_="text-[15px] font-medium hover:text-themecolor hover:cursor-pointer").find_next("a")
-              data['url'] = urljoin(self.url, a.get('href').strip())
-              
-              data['manga_title'] = a.text.strip()
-              chap = card.find(class_="flex-1 inline-block mt-1")
-              
-              data['chapter_url'] = urljoin(self.url, chap.find_next("a").get('href').strip())
-              data['title'] = data['chapter_url'].split("/")[-1]
-              
-              output.append(data)
-            except:
-              continue
-        
-      page += 1
-    
-    return output
+  
