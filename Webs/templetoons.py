@@ -7,6 +7,8 @@ from urllib.parse import urlparse, urljoin, quote, quote_plus
 
 import re
 from loguru import logger
+from .utitls import DEAULT_MSG_FORMAT
+
 
 class TempleToonsWebs(Scraper):
   def __init__(self):
@@ -42,16 +44,32 @@ class TempleToonsWebs(Scraper):
     bs = BeautifulSoup(content, "html.parser") if content else None
     if bs:
       con = bs.find(class_="px-5 py-7 rounded-b-xl text-white/90 shadow-red-400 shadow-md bg-black/50")
-      msg = f"<b>{results['title']}</b>\n\n"
-      msg += f"<b>Url:</b> {results['url']}\n\n"
-      if con:
-        for i in con.find_all("p"):
-          if i:
-            msg += i.text.strip()
-            msg += "\n"
-            msg += "\n"
-
-      results['msg'] = msg
+      
+      # < ----- Description ----- >
+      desc = con.find_next("p", class_="text-xs md:text-sm lg:text-normal") if con else None
+      desc = desc.text if desc else "N/A"
+      
+      # < ----- Status ----- >
+      status_container  = con.find(class_="grid grid-cols-2 lg:grid-cols-3 gap-2 text-xs md:text-sm lg:text-normal") if con else None
+      pattern = r"Status:\s+([^\n]+)"
+      
+      status_matches = "N/A"
+      if status_container:
+        for status in status_container:
+          status_matches = re.findall(pattern, status.text)
+          if status_matches:
+            status_matches = status_matches[0]
+            break
+      
+      results['msg'] = DEAULT_MSG_FORMAT.format(
+        title=results['title'],
+        status=status_matches,
+        summary=desc,
+        genres="N/A",
+        url=results['url']
+      )
+      
+      # < ----- Chapters ----- >
       results['chapters'] = bs.find_all(
         "a", class_="col-span-full sm:col-span-3 lg:col-span-2 flex flex-row gap-2 bg-[#131212] rounded-lg h-[90px] overflow-hidden"
       )
