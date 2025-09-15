@@ -8,6 +8,8 @@ from urllib.parse import urlparse, urljoin, quote, quote_plus, urlencode
 import re
 from loguru import logger
 import asyncio
+from .utitls import DEAULT_MSG_FORMAT
+
 
 class WeebCentralWebs(Scraper):
   def __init__(self):
@@ -65,47 +67,51 @@ class WeebCentralWebs(Scraper):
 
   async def get_chapters(self, data, page: int=1):
     results = data
-    #headers = self.headers
+    try:
+      link = data['url'].split("/")
+      new_link = "/".join(link[:-1]) + "/full-chapter-list"
+      
+      chapters = await self.get(data['url'], cs=True)
+      if chapters:
+        bs = BeautifulSoup(chapters, "html.parser")
+        
+        tags_= bs.find(class_="flex flex-col gap-4")
+        tags_ = tags_.find_all("li")
+        geners = None
+        if tags_:
+          for tag in tags_:
+            tag_fornt = tag.findNext("strong").text.strip()
+            tag_back = tag.find_all("span")
+            tag_back = [i.text.strip() for i in tag_back]
+            tag_back = ' '.join(tag_back) if tag_back else None
+            if tag_back and tag_fornt:
+              if tag_fornt == "Tags(s)":
+                geners = tag_back
+                break
+        
+        desc = bs.find("section", class_="md:w-8/12 flex flex-col gap-4")
+        des = desc.find(class_="flex flex-col gap-4") if desc else None
+        
+        des = des.find_next("li") if des else None
+        des = des.text.strip() if des else None
+        
+        results['msg'] = DEAULT_MSG_FORMAT.format(
+          title=results['title'],
+          status="N/A",
+          genres=geners if geners else "N/A",
+          summary=des[:200] if des else "N/A",
+          url=results['url']
+        )
+      
+      try: chapters = await self.get(new_link, cs=True)#, headers=headers)
+      except: chapters = None
+      if chapters:
+        bs = BeautifulSoup(chapters, "html.parser")
+        
+        results['chapters'] = bs.find_all("a", class_=lambda x: x and "hover:bg-base-300" in x)
+    except Exception as err:
+      logger.exception(f"WeebCentral Chapters: {err}")
     
-    link = data['url'].split("/")
-    new_link = "/".join(link[:-1]) + "/full-chapter-list"
-    
-    #headers['hx-current-url'] = data['url']
-    #headers['hx-target'] = "chapter-list"
-    #headers['referer'] = data['url']
-    
-    chapters = await self.get(data['url'], cs=True)
-    if chapters:
-      bs = BeautifulSoup(chapters, "html.parser")
-      
-      tags_= bs.find(class_="flex flex-col gap-4")
-      msg = f"<b>{data['title']}</b>\n\n"
-      tags_ = tags_.find_all("li")
-      if tags_:
-        for tag in tags_:
-          tag_fornt = tag.findNext("strong").text.strip()
-          tag_back = tag.find_all("span")
-          tag_back = [i.text.strip() for i in tag_back]
-          tag_back = ' '.join(tag_back) if tag_back else None
-          if tag_back and tag_fornt:
-            msg += f"<b>{tag_fornt}</b> <code>{tag_back}</code>\n"
-      
-      desc = bs.find("section", class_="md:w-8/12 flex flex-col gap-4")
-      des = desc.find(class_="flex flex-col gap-4") if desc else None
-      
-      des = des.find_next("li") if des else None
-      des = des.text.strip() if des else None
-      
-      msg += f"<b>Description:</b> <code>{des}</code>\n"
-      results['msg'] = msg
-    
-    try: chapters = await self.get(new_link, cs=True)#, headers=headers)
-    except: chapters = None
-    if chapters:
-      bs = BeautifulSoup(chapters, "html.parser")
-
-      results['chapters'] = bs.find_all("a", class_="hover:bg-base-300 flex-1 flex items-center p-2")
-      
     return results
 
   def iter_chapters(self, data, page: int=1):
@@ -118,15 +124,22 @@ class WeebCentralWebs(Scraper):
     }
     
     if 'chapters' in data:
-      for card in data['chapters']:
-        title = card.find('span', string=lambda text: "Ch" in text or "Ep" in text or "Vol" in text or "#" in text or "Mi" in text)
+      for a in data['chapters']:
+        ch_url = a.get("href")
+        outer_span = a.find("span", class_="grow flex items-center gap-2")
+        episode_title = None
+        if outer_span:
+            inner_spans = outer_span.find_all("span", recursive=False)
+            if inner_spans:
+                episode_title = inner_spans[0].get_text(strip=True)
         
-        chapters_list.append({
-          "title": title.text.strip(),
-          "url": f"{card['href']}/images?{urlencode(params)}",
-          "manga_title": data['title'],
-          "poster": data['poster'] if 'poster' in data else None,
-        })
+        if episode_title and ch_url:
+          chapters_list.append({
+            "title": episode_title,
+            "url": f"{ch_url}/images?{urlencode(params)}",
+            "manga_title": data['title'],
+            "poster": data['poster'] if 'poster' in data else None,
+          })
     
     return chapters_list[(page - 1) * 60:page * 60] if page != 1 else chapters_list
 
@@ -144,25 +157,3 @@ class WeebCentralWebs(Scraper):
 
     return image_links
 
-
-  async def get_updates(self, page:int=1):
-    output = []
-    while page < 4:
-      url = f"https://weebcentral.com/latest-updates/{page}"
-      try:
-        content = await self.get(url, cs=True)
-        bs = BeautifulSoup(content, "html.parser")
-        cards = bs.find_all("article")
-        for card in cards:
-          data = {}
-          data['manga_title'] = card.get("data-tip")
-          data['url'] = card.findNext("a").get('href')
-          data['chapter_url'] = card.findNext("a").findNext("a").get('href')
-          data['title'] = card.find_next("span").text.strip()
-          output.append(data)
-      except:
-        pass
-      
-      page += 1
-    
-    return output
