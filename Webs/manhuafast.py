@@ -7,6 +7,8 @@ from urllib.parse import urlparse, urljoin, quote, quote_plus
 
 import re
 from loguru import logger
+from .utitls import DEAULT_MSG_FORMAT
+
 
 class ManhuaFastWebs(Scraper):
   def __init__(self):
@@ -63,10 +65,13 @@ class ManhuaFastWebs(Scraper):
       
       des = bs.find(class_="summary__content show-more").text.strip() if bs.find(class_="summary__content show-more") else "N/A"
       
-      results['msg'] = f"<b>{results['title']}</b>\n\n"
-      results['msg'] += f"<b>Url:</b> <code>{results['url']}</code>\n"
-      results['msg'] += f"<b>Genres:</b> <code>{generes}</code>\n"
-      results['msg'] += f"<b>Description:</b> <code>{des}</code>\n"
+      results['msg'] = DEAULT_MSG_FORMAT.format(
+        title=results['title'],
+        status="N/A",
+        genres=generes,
+        summary=des[:200],
+        url=results['url']
+      )
       
     try: 
       chapters = await self.post(f"{results['url']}ajax/chapters/", headers=self.headers)
@@ -111,41 +116,3 @@ class ManhuaFastWebs(Scraper):
       image_links.append(image_url)
     
     return image_links
-
-
-  async def get_updates(self, page:int=1):
-    output = []
-    while page < 5:
-      url = f"https://manhuafast.net/page/{page}/"
-      results = await self.get(url, headers=self.headers)
-
-      bs = BeautifulSoup(results, "html.parser")
-      container = bs.find(class_="c-blog-listing c-page__content manga_content")
-      
-      container = container.find(class_="c-blog__content")
-      mangas = container.find_all(class_="page-listing-item")
-      if mangas:
-        for manga in mangas:
-          if manga:
-            cards = manga.find_all(class_="col-6 col-md-3 badge-pos-1")
-            if cards:
-              for card in cards:
-                try:
-                  data = {}
-                  a_tag = card.find_next("h3", {"class": "h5"}).find_next("a")
-                  
-                  data['url'] = a_tag.get("href")
-                  data['manga_title'] = a_tag.text.strip()
-                  
-                  span_tag = card.find_next("span", {"class": "chapter font-meta"}).find_next("a")
-                  
-                  data['chapter_url'] = span_tag.get("href")
-                  data['title'] = span_tag.text.strip()
-                  
-                  output.append(data)
-                except:
-                  continue
-
-      page += 1
-    
-    return output
