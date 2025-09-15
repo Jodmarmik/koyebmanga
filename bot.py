@@ -265,7 +265,7 @@ Sleep mode deactivated. Neural cores at 100%. Feed me tasks, and watch magic hap
       InlineKeyboardButton("*Channel*", url = "telegram.me/Wizard_Bots")
     ]]
 
-    try: await self.send_photo(self.LOG_CHANNEL, photo=PICS, caption=MSG, reply_markup=InlineKeyboardMarkup(button))
+    try: await self.send_photo(self.UPDATE_CHANNEL, photo=PICS, caption=MSG, reply_markup=InlineKeyboardMarkup(button))
     except: pass
 
 
