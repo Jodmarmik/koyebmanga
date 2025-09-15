@@ -5,7 +5,6 @@ from Webs import *
 import asyncio
 import random
 import string
-from typing import Any, Dict, List, Optional, Set, Tuple, Callable, Awaitable, Union, Hashable
 
 from loguru import logger
 
@@ -14,6 +13,12 @@ from pyrogram.errors import PeerIdInvalid
 from pyrogram.errors import FloodWait
 
 import re
+
+from bot import Vars, Bot
+
+from typing import Any, Dict, List, Optional, Tuple
+
+
 
 searchs = dict()
 backs = dict()
@@ -36,6 +41,7 @@ users_txt = """
 <b>=> Banner 1: <code>{banner1}</code></b>
 <b>=> Banner 2: <code>{banner2}</code></b>
 <b>=> Dump Channel: <code>{dump}</code></b>
+<b>=> Compression Quality: <code>{compress}</code></b>
 """
 
 web_data = {
@@ -54,11 +60,19 @@ web_data = {
     " Manhwa18 ":  Manhwa18Webs(),
 }
 
+web_data = dict(sorted(web_data.items(), key=lambda x: x[0].strip()))
+
 plugins_name = " ".join(web_data[i].sf for i in web_data.keys())
 
 
 def split_list(li):
     return [li[x:x + 2] for x in range(0, len(li), 2)]
+
+
+def check_get_web(url):
+    for i in web_data.keys():
+        if url.startswith(web_data[i].url):
+            return web_data[i]
 
 
 def plugins_list(type=None):
@@ -73,13 +87,20 @@ def plugins_list(type=None):
             c = web_data[i].sf
             c = f"gens_{c}"
             button.append(InlineKeyboardButton(i, callback_data=c))
+    elif type and type == "subs":
+        for i in web_data.keys():
+            c = web_data[i].sf
+            c = f"isubs_{c}"
+            button.append(InlineKeyboardButton(i, callback_data=c))
     else:
         for i in web_data.keys():
             c = web_data[i].sf
             c = f"plugin_{c}"
             button.append(InlineKeyboardButton(i, callback_data=c))
 
-    return InlineKeyboardMarkup(split_list(button))
+    button = split_list(button)
+    button.append([InlineKeyboardButton("🔥 Close 🔥", callback_data="kclose")])
+    return InlineKeyboardMarkup(button)
 
 
 def get_webs(sf):
@@ -89,242 +110,298 @@ def get_webs(sf):
 
 
 # retries an async awaitable as long as it raises FloodWait, and waits for err.x time
-def retry_on_flood(function: Callable[[Any], Awaitable]):
+def retry_on_flood(function):
 
     async def wrapper(*args, **kwargs):
         while True:
             try:
-                await asyncio.sleep(1)
                 return await function(*args, **kwargs)
+
             except pyrogram.errors.FloodWait as err:
                 logger.warning(
                     f'FloodWait, waiting {err.value} seconds: {err.MESSAGE}')
-                await asyncio.sleep(err.value)
+                await asyncio.sleep(err.value + 3)
                 continue
 
-            except PeerIdInvalid:
+            except ValueError:
+                raise
+            except pyrogram.errors.exceptions.bad_request_400.QueryIdInvalid:
+                return
+            except pyrogram.errors.exceptions.bad_request_400.MessageNotModified:
                 return
 
-            except pyrogram.errors.BadRequest as err:
-                if err.MESSAGE == 'Message is not modified':
-                    return
-                elif err.MESSAGE == 'Message_id_invalid':
-                    return
-                elif err.MESSAGE == 'Message not found':
-                    return
-
-            except pyrogram.errors.Unauthorized as err:
-                return
-
-            except pyrogram.errors.RPCError as err:
-                if err.MESSAGE == 'FloodWait':
-                    logger.warning(
-                        f'FloodWait, waiting {err.value} seconds: {err.MESSAGE}'
-                    )
-                    await asyncio.sleep(err.value)
-                    continue
-                else:
-                    raise err
-
-            except BaseException as e:
-                return
             except Exception as err:
+                logger.exception(err)
                 raise err
 
     return wrapper
 
 
-class AQueue:
 
+async def check_fsb(client, message):
+    channel_button = []
+    change_data = []
+
+    for index, channel_information in enumerate(client.FSB):
+        try:
+            channel = int(channel_information[1])
+        except:
+            channel = str(channel_information[1])
+
+        try:
+            await client.get_chat_member(channel, message.from_user.id)
+        except pyrogram.errors.UsernameNotOccupied:
+            await retry_on_flood(
+                client.send_message
+            )(Vars.LOG_CHANNEL,
+              f"`Channel does not exist, therefore bot will continue to operate normally ` : - {channel}"
+              )
+
+        except pyrogram.errors.ChatAdminRequired:
+            await retry_on_flood(
+                client.send_message
+            )(Vars.LOG_CHANNEL,
+              f"`Bot is not admin of the channel, therefore bot will continue to operate normally` :- `{channel}`"
+              )
+
+        except pyrogram.errors.UserNotParticipant:
+            try:
+                channel_link = channel_information[2]
+            except:
+                if isinstance(channel, int):
+                    channel_link = await client.export_chat_invite_link(channel
+                                                                        )
+                else:
+                    channel_link = f"https://telegram.me/{channel.strip()}"
+
+            channel_button.append(
+                InlineKeyboardButton(channel_information[0], url=channel_link))
+            if len(channel_information) == 2:
+                change_data.append((index, channel_information[0],
+                                    channel_information[1], channel_link))
+
+        except pyrogram.ContinuePropagation:
+            raise
+        except pyrogram.StopPropagation:
+            raise
+        except BaseException as e:
+            await retry_on_flood(
+                client.send_message
+            )(Vars.LOG_CHANNEL,
+              f"<i>Error at Force Subscribe : - `{e}` at Channel : - {channel}</i>"
+              )
+    
+    return channel_button, change_data
+
+
+
+class AQueue:
     def __init__(self, maxsize: Optional[int] = None):
-        self.data: Dict[str, Tuple[Any,
-                                   Hashable]] = {}  # Enforce hashable locks
-        self._mask: Set[Hashable] = set()  # Only hashable types allowed
-        self._put_lock = asyncio.Lock()
-        self._get_lock = asyncio.Lock()
-        self._not_empty = asyncio.Event()
-        self._user_data = {}
-        self._unfinished_tasks = 0
+        """
+        storage_data: {task_id: {data: data, priority: priority, user_id: user_id}}
+        data_users: {user_id: [task_id1, task_id2, task_id3]}
+        ongoing_tasks: {task_id: task_data} - tasks currently being processed
+        """
+        self.storage_data: Dict[str, Dict] = {}
+        self.data_users: Dict[int, List[str]] = {}
+        self.ongoing_tasks: Dict[str, Dict] = {}
+        self.lock = asyncio.Lock()
         self.maxsize = maxsize
 
     async def get_random_id(self) -> str:
+        """Generate a unique random task ID."""
         while True:
             random_string = ''.join(
-                random.choices(string.ascii_letters + string.digits, k=9))
-            if random_string not in self.data:
+                random.choices(string.ascii_letters + string.digits + string.ascii_lowercase + string.ascii_uppercase, k=5))  
+            
+            if random_string not in self.storage_data and random_string not in self.ongoing_tasks:
                 return random_string
 
-    async def put(self, item: Any, lock: Hashable) -> str:
-        """Add item to queue. Lock must be hashable (int, str, tuple, etc.)."""
-        if not isinstance(lock, Hashable):
-            raise TypeError(f"Lock must be hashable, got {type(lock)}")
+    
+    async def put(self, data: Any, user_id: int, priority: int = 1) -> str:
+        """
+        Add a new task to the queue.
 
-        if self.maxsize is not None and len(self.data) >= self.maxsize:
-            raise asyncio.QueueFull
+        Args:
+            user_id: User identifier
+            data: Task data
+            priority: 0 for premium users, 1 for normal users
 
-        async with self._put_lock:
+        Returns:
+            task_id: Generated task ID
+        """
+        if self.maxsize is not None and len(self.storage_data) >= self.maxsize:
+            raise asyncio.QueueFull("Queue has reached maximum size")
+
+        async with self.lock:
             task_id = await self.get_random_id()
-            self.data[task_id] = (item, lock)
-            self._unfinished_tasks += 1
-            self._not_empty.set()
-            
-            if not self._user_data.get(lock):
-                self._user_data[lock] = []
-            
-            self._user_data[lock].append(task_id)
-            
+            self.storage_data[task_id] = {
+                'data': data, 
+                'priority': priority, 
+                'user_id': user_id,
+            }
+
+            if user_id not in self.data_users:
+                self.data_users[user_id] = []
+
+            self.data_users[user_id].append(task_id)
+
             return task_id
 
-    async def get(self, worker_id: int) -> Tuple[Any, Hashable]:
-        async with self._get_lock:
-            while True:
-                # First check for immediately available items
-                available = [(task_id, item, lock)
-                             for task_id, (item, lock) in self.data.items()
-                             if lock not in self._mask]
+    
+    async def get(self, worker_id: int) -> Tuple[Any, int, str]:
+        """
+        Get the next available task from the queue.
 
-                if available:
-                    task_id, item, lock = available[0]
-                    del self.data[task_id]
-                    self.acquire(lock)
-                    return item, lock, task_id
+        Args:
+            worker_id: ID of the worker requesting the task
 
-                # If queue is completely empty, wait for new items
-                if not self.data:
-                    self._not_empty.clear()
-                    await self._not_empty.wait()
+        Returns:
+            Tuple of (task_data, user_id, task_id)
+        """
+        while True:
+            async with self.lock:
+                if not self.storage_data:
+                    await asyncio.sleep(0.1)
                     continue
 
-                # If items exist but are all locked, wait for releases
-                await asyncio.sleep(0.1)  # Small delay to prevent busy-w
+                available_tasks = []
+                for task_id, data in self.storage_data.items():
+                    user_id = data['user_id']
+                    user_has_ongoing = any(
+                        task_data['user_id'] == user_id 
+                        for task_data in self.ongoing_tasks.values()
+                    )
 
-    async def get_test(self, worker_id: int) -> Tuple[Any, Hashable]:
-        async with self._get_lock:
-            await self._not_empty.wait()
+                    if not user_has_ongoing:
+                        available_tasks.append((task_id, data))
 
-            # Safe item collection with type checking
-            available = []
-            for task_id, (item, lock) in self.data.items():
-                try:
-                    if lock not in self._mask:
-                        available.append((task_id, item, lock))
-                except TypeError:
-                    # Clean up invalid locks
-                    del self.data[task_id]
+                if not available_tasks:
+                    await asyncio.sleep(0.1)
                     continue
 
-            if not available:
-                self._not_empty.clear()
-                raise Exception("No available items despite not_empty event")
+                premium_tasks = [task for task in available_tasks if task[1]['priority'] == 0]
 
-            # Get first available item
-            task_id, item, lock = available[0]
-            del self.data[task_id]
-            self.acquire(lock)
+                if premium_tasks:
+                    selected_task = premium_tasks[0]
+                else:
+                    selected_task = available_tasks[0]
 
-            # Safe availability check
-            has_available = False
-            for _, existing_lock in self.data.items():
-                try:
-                    if existing_lock not in self._mask:
-                        has_available = True
-                        break
-                except TypeError:
-                    continue
+                task_id, task_data = selected_task
 
-            if not has_available:
-                self._not_empty.clear()
+                self.ongoing_tasks[task_id] = task_data
+                del self.storage_data[task_id]
 
-            return item, lock
+                user_id = task_data['user_id']
+                if user_id in self.data_users and task_id in self.data_users[user_id]:
+                    self.data_users[user_id].remove(task_id)
+                    
+                    if not self.data_users[user_id]:
+                        del self.data_users[user_id]
 
-    def acquire(self, lock: Hashable) -> None:
-        """Acquire a lock. Lock must be hashable."""
-        if not isinstance(lock, Hashable):
-            raise TypeError(f"Lock must be hashable, got {type(lock)}")
-        self._mask.add(lock)
+                return task_data['data'], user_id, task_id
 
-    def release(self, lock: Hashable) -> None:
-        """Release a lock. Lock must be hashable."""
-        if not isinstance(lock, Hashable):
-            raise TypeError(f"Lock must be hashable, got {type(lock)}")
-        self._unfinished_tasks -= 1
-        self._mask.discard(lock)
-        if any(item_lock == lock for _, item_lock in self.data.items()):
-            self._not_empty.set()
-
+    
     async def delete_task(self, task_id: str) -> bool:
         """Delete a specific task by its ID.
 
         Returns:
             bool: True if task was found and deleted, False otherwise
         """
-        async with self._put_lock:
-            if task_id in self.data:
-                _, lock = self.data[task_id]
-                if lock in self._mask:
-                    self._mask.discard(lock)
-                self.delete_user_data_(task_id)
-                del self.data[task_id]
-                self._unfinished_tasks -= 1
-                if not self.data:
-                    self._not_empty.clear()
+        async with self.lock:
+            if task_id in self.storage_data:
+                task_data = self.storage_data[task_id]
+                user_id = task_data['user_id']
+
+                # Remove from storage
+                del self.storage_data[task_id]
+
+                # Remove from user's task list
+                if user_id in self.data_users and task_id in self.data_users[user_id]:
+                    self.data_users[user_id].remove(task_id)
+                    if not self.data_users[user_id]:
+                        del self.data_users[user_id]
+
                 return True
             return False
 
-    async def delete_tasks(self, task_ids: List[str]) -> int:
-        """Delete multiple tasks by their IDs.
+    
+    async def delete_tasks(self, user_id: int) -> int:
+        """Delete all tasks for a specific user.
 
         Returns:
             int: Number of tasks successfully deleted
         """
-        async with self._put_lock:
-            count = 0
-            for task_id in task_ids:
-                if task_id in self.data:
-                    _, lock = self.data[task_id]
-                    if lock in self._mask:
-                        self._mask.discard(lock)
-                    del self.data[task_id]
-                    self._unfinished_tasks -= 1
-                    count += 1
+        if user_id not in self.data_users:
+                return 0
 
-            if not self.data:
-                self._not_empty.clear()
+        task_ids = self.data_users.pop(user_id)
+        deleted_count = 0
 
-            return count
+        for task_id in task_ids:
+            if task_id in self.storage_data:
+                sts = self.storage_data[task_id]['data'][3]
+                if sts:
+                    try: 
+                        await sts.delete()
+                    except FloodWait as e: 
+                        await asyncio.sleep(e.value+2)
+                        await sts.delete()
+                    except:
+                        pass
+                
+                del self.storage_data[task_id]
+                deleted_count += 1
+
+        if user_id in self.data_users:
+            del self.data_users[user_id]
+
+        return deleted_count
+
     
-    def get_count_(self, user_id):
-        return len(self._user_data.get(user_id, []))
-    
-    def delete_user_data_(self, task_id):
-        for user_id, tasks in self._user_data.items():
-            if task_id in tasks:
-                self._user_data[user_id].remove(task_id)
+    def get_count(self, user_id: int) -> int:
+        """Get the number of pending tasks for a user."""
+        return len(self.data_users[user_id]) if user_id in self.data_users else 0
 
+    
     def task_exists(self, task_id: str) -> bool:
-        """Check if a task exists in the queue."""
-        return task_id in self.data
+        """Check if a task exists in the queue (pending or ongoing)."""
+        return task_id in self.storage_data or task_id in self.ongoing_tasks
 
+    
     def qsize(self) -> int:
-        """Return the number of items in the queue."""
-        return len(self.data)
+        """Return the number of pending items in the queue."""
+        return len(self.storage_data)
 
+    
     def empty(self) -> bool:
         """Return True if the queue is empty."""
-        return not self.data
+        return not self.storage_data
 
-    def task_done(self, task_id) -> None:
-        """Mark a task as done."""
-        self._unfinished_tasks -= 1
-        self.delete_user_data_(task_id)
+    
+    async def task_done(self, task_id: str) -> bool:
+        """Mark a task as done and remove it from ongoing tasks.
 
-    async def join(self) -> None:
-        """Wait until all tasks are done."""
-        while self._unfinished_tasks > 0:
-            await asyncio.sleep(0.1)
+        Returns:
+            bool: True if task was found and marked as done, False otherwise
+        """
+        async with self.lock:
+            if task_id in self.ongoing_tasks:
+                user_id = self.ongoing_tasks[task_id]['user_id']
+                if user_id in self.data_users and task_id in self.data_users[user_id]:
+                    self.data_users[user_id].remove(task_id)
+                
+                del self.ongoing_tasks[task_id]
+                return True
+            return False
+        
+    def get_ongoing_count(self, user_id: int) -> int:
+        """Get the number of ongoing tasks for a user."""
+        return sum(1 for task in self.ongoing_tasks.values() if task['user_id'] == user_id)
 
 
 queue = AQueue()
+    
 
 
 def clean(txt, length=-1):
