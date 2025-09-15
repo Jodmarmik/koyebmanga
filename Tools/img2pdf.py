@@ -38,49 +38,45 @@ def thumbnali_images(image_url, download_dir, quality=80, file_name="thumb.jpg")
     else:
         return None
 
-async def download_through_cloudscrapper(image_url, download_dir, quality=80):
-    scraper = create_scraper()
-    
-    if not os.path.exists(download_dir):
-        os.makedirs(download_dir)
-    
-    images_file = []
-    for idx, image_url in enumerate(image_url, 1):
-        retries = 0
-        while retries < 4:
-            image_response = await to_thread(scraper.get, image_url)
-            if image_response.status_code == 200:
-                img_path = os.path.join(download_dir, f"{idx}.jpg")
-                with open(img_path, 'wb') as img_file:
-                    img_file.write(image_response.content)
-                    try:
-                        with Image.open(img_path) as img:
-                            img = img.convert("RGB")
-                            img.save(img_path, "JPEG", quality=quality, optimize=True)
-                            
-                    except Exception as e:
-                        logger.exception(f"Error converting image: {e}")
-                    
-                    images_file.append(img_path)
-                    break
-            else:
-                logger.exception(f"Download :- {retries} :- {image_url}: {image_response.text}")
-                retries += 1
-                await asyncio.sleep(3)
-                
-    return images_file
-    
 
-                
-def download_and_convert_images(images, download_dir, quality=80, target_width=None):
+async def download_and_convert_images(
+    images, 
+    download_dir,
+    base_url: str,
+    quality=60, 
+    target_width=None, 
+    cs=None
+):
     if not os.path.exists(download_dir):
         os.makedirs(download_dir)
 
     image_files = []
+    if "manhuaplus.com" in base_url:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://manhuaplus.com/",
+            #"Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+            "Cache-Control": "no-cache",
+        }
+    else:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Referer": base_url,
+        }
+    
     for idx, image_url in enumerate(images, 1):
         retries = 0
         while retries < 4:
-            image_response = requests.get(image_url)
+            if cs:
+                scarper = create_scraper()
+                image_response = await to_thread(scarper.get, image_url, headers=headers)
+            else:
+                image_response = await to_thread(requests.get, image_url, stream=True, headers=headers)#, verify=False)
             if image_response.status_code == 200:
                 img_path = os.path.join(download_dir, f"{idx}.jpg")
                 if os.path.exists(download_dir):
