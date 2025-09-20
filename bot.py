@@ -261,7 +261,7 @@ Sleep mode deactivated. Neural cores at 100%. Feed me tasks, and watch magic hap
     PICS = random.choice(Vars.PICS)
 
     button = [[
-      InlineKeyboardButton('*Start Now*', url= "https://t.me/Manga_Downloaderx_bot?start=start"),
+      InlineKeyboardButton('*Start Now*', url= f"https://t.me/{usr_bot_me.username}?start=start"),
       InlineKeyboardButton("*Channel*", url = "telegram.me/Wizard_Bots")
     ]]
 
