@@ -169,12 +169,12 @@ async def start(client, message):
        "<b><i>Check /help for more information.</i></b>"),
       reply_markup=InlineKeyboardMarkup([
         [
-          InlineKeyboardButton('✯ Repo ✯', url="https://t.me/NLTRIDE"),
-          InlineKeyboardButton("✯ Support ✯", url="https://t.me/tg_x_update")
+          InlineKeyboardButton("UPDATE", url="https://t.me/NLTRIDE"),
+          InlineKeyboardButton("SUPPORT", url="https://t.me/tg_x_update")
         ],
         [
-          InlineKeyboardButton("♛ Setting ♛", callback_data="mus"),
-          InlineKeyboardButton("♞ Close ♞", callback_data="kclose")
+          InlineKeyboardButton("SETTING", callback_data="mus"),
+          InlineKeyboardButton("CLOSE", callback_data="kclose")
         ]
       ]))
 
