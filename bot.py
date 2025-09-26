@@ -12,22 +12,22 @@ import sys
 
 
 class Vars:
-  API_ID = int(os.environ.get("API_ID", "0"))
-  API_HASH = os.environ.get("API_HASH", "dummy_hash")
+  API_ID = int(os.environ.get("API_ID", "27575174"))
+  API_HASH = os.environ.get("API_HASH", "f210993a7836111440763fdda6ddf7c5")
   
-  BOT_TOKEN = os.environ.get("BOT_TOKEN", "dummy_token")
+  BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
   plugins = dict(
     root="TG",
     #include=["TG.users"]
   )
   
-  LOG_CHANNEL = os.environ.get("LOG_CHANNEL", "")
-  UPDATE_CHANNEL = os.environ.get("UPDATE_CHANNEL", "")
-  DB_URL = os.environ.get("DB_URL", "mongodb://localhost:27017/manhwa_bot")
+  LOG_CHANNEL = os.environ.get("LOG_CHANNEL", "-1003005844693")
+  UPDATE_CHANNEL = os.environ.get("UPDATE_CHANNEL", "-1002819540454")
+  DB_URL = os.environ.get("DB_URL", "")
   
   PORT = int(os.environ.get("PORT", "5000"))
-  OWNER = int(os.environ.get("OWNER","1880221341"))
-  ADMINS = os.environ.get("ADMINS", "1880221341")
+  OWNER = int(os.environ.get("OWNER","1171696629"))
+  ADMINS = os.environ.get("ADMINS", "1171696629")
   ADMINS = [int(admin) for admin in (ADMINS).split(" ")]
   ADMINS.append(OWNER)
   
@@ -45,7 +45,7 @@ class Vars:
   FORCE_SUB_TEXT = os.environ.get("FORCE_SUB_TEXT", """<b><i>❗️ You must join our channel before using this feature:</i></b>""")
   
   # Force Sub Channel Format : Button Text: Username(Without @) or Chat ID
-  FORCE_SUB_CHANNEL = os.environ.get("FORCE_SUB_CHANNEL", "𝕵𝖔𝖎𝖓 𝕮𝖍𝖆𝖓𝖓𝖊𝖑: Guimi_Zhi_Zhu_Anime, 𝕸𝖆𝖎𝖓 𝕮𝖍𝖆𝖓𝖓𝖊𝖑: Wizard_Bots")
+  FORCE_SUB_CHANNEL = os.environ.get("FORCE_SUB_CHANNEL", "𝕵𝖔𝖎𝖓 𝕮𝖍𝖆𝖓𝖓𝖊𝖑: nltride, 𝕸𝖆𝖎𝖓 𝕮𝖍𝖆𝖓𝖓𝖊𝖑: tg_x_update")
   
   BYPASS_TXT = os.environ.get("BYPASS_TXT", """<blockquote><b>🚨 ʙʏᴘᴀss ᴅᴇᴛᴇᴄᴛᴇᴅ 🚨</b></blockquote>
 
@@ -249,7 +249,7 @@ class Manhwa_Bot(pyrogram.Client, Vars):
 
     """)
     self.username = usr_bot_me.username
-    self.logger.info("Make By https://t.me/Wizard_Bots ")
+    self.logger.info("Make By https://t.me/nltride ")
     self.logger.info(f"Manhwa Bot Started as {usr_bot_me.first_name} | @{usr_bot_me.username}")
 
     if self.WEBS_HOST:
@@ -262,7 +262,7 @@ Sleep mode deactivated. Neural cores at 100%. Feed me tasks, and watch magic hap
 
     button = [[
       InlineKeyboardButton('*Start Now*', url= f"https://t.me/{usr_bot_me.username}?start=start"),
-      InlineKeyboardButton("*Channel*", url = "telegram.me/Wizard_Bots")
+      InlineKeyboardButton("*Channel*", url = "telegram.me/nltride")
     ]]
 
     try: await self.send_photo(self.UPDATE_CHANNEL, photo=PICS, caption=MSG, reply_markup=InlineKeyboardMarkup(button))
